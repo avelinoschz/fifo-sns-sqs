@@ -1,10 +1,10 @@
-# FIFO
+# SQS-FIFO
 
 ## Goal
 
 Understand the parallelization capabilities of FIFO SQS.
 
-## Characteristics of a FIFO SQS
+## Characteristics of a SQS FIFO
 
 FIFO SQS guarantees message ordering, and has the feature to manage messages by MessageGroupId.
 
