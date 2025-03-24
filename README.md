@@ -1,5 +1,9 @@
 # SQS-FIFO
 
+A local FIFO SQS simulator using AWS SDK and LocalStack.
+
+This project sends and consumes messages from a FIFO SQS queue with support for multiple message groups and concurrent consumers. Useful for testing message ordering and consumer behavior in a FIFO queue setup.
+
 ## Goal
 
 Understand the parallelization capabilities of FIFO SQS.
