@@ -28,6 +28,7 @@ var (
 	queueURL string
 	topicARN string
 	region   string
+	profile  string
 )
 
 var groups = []string{"group-1", "group-2", "group-3"}
@@ -46,6 +47,7 @@ func init() {
 	} else {
 		queueURL = os.Getenv("AWS_QUEUE_URL")
 		topicARN = os.Getenv("AWS_TOPIC_ARN")
+		profile = os.Getenv("AWS_PROFILE")
 	}
 }
 
@@ -58,6 +60,7 @@ func main() {
 	var err error
 
 	if useLocalstack {
+		fmt.Println("Using Localstack for development")
 		cfg, err = config.LoadDefaultConfig(ctx,
 			config.WithRegion(region),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
@@ -69,8 +72,9 @@ func main() {
 			})),
 		)
 	} else {
+		fmt.Println("Connecting to AWS using profile")
 		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(region),
+			config.WithSharedConfigProfile(profile),
 		)
 	}
 
@@ -184,7 +188,7 @@ func consumeOnlyGroup(ctx context.Context, client *sqs.Client, consumerID int, e
 }
 
 // simple check based on group name in message body (group ID is not returned by ReceiveMessage)
-// supposedly, it should be on the msg metadata map, but didn't find it
+// supposedly, it should be on the msg metadata map, but didn't find it. Maybe due to LocalStack limitations.
 func isGroupMessage(msg types.Message, group string) bool {
 	return msg.Body != nil && len(*msg.Body) > 0 && contains(*msg.Body, group)
 }
