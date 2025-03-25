@@ -4,6 +4,12 @@ A local FIFO SQS simulator using AWS SDK and LocalStack.
 
 This project sends and consumes messages to a FIFO SNS and SQS with support for multiple message groups and concurrent consumers. Useful for testing message ordering and consumer behavior in a FIFO topic and queue setup.
 
+## Architecture SNS → SQS
+
+This project uses an SNS FIFO topic as the entry point for messages. Instead of publishing directly to the SQS FIFO queue, the producer sends messages to the SNS FIFO topic. The topic is subscribed to the queue.
+
+This simulates a more realistic architecture for distributed systems, where publishers communicate through a centralized messaging hub. FIFO behavior is still preserved thanks to the use of `MessageGroupId` and FIFO-compatible components.
+
 ## Goal
 
 Understand the parallelization capabilities of FIFO SQS.
@@ -358,13 +364,7 @@ This happened due to starvation. FIFO queue guarantees order, so the messages ge
 
 **Note**: In this test, messages used a naming convention to identify their group. In production, group info should be extracted from message metadata or payload, depending on how it's published.
 
-## Updated version: Architecture SNS → SQS
-
-This project uses an SNS FIFO topic as the entry point for messages. Instead of publishing directly to the SQS FIFO queue, the producer sends messages to the SNS FIFO topic. The topic is subscribed to the queue.
-
-This simulates a more realistic architecture for distributed systems, where publishers communicate through a centralized messaging hub. FIFO behavior is still preserved thanks to the use of `MessageGroupId` and FIFO-compatible components.
-
-### Scenario 3: One Consumer Per Group going through SNS + SQS
+## Updated version: Scenario 3: One Consumer Per Group going through actual SNS + SQS AWS services
 
 In this scenario, we instantiate one consumer for groups each group and are connecting directly to an actual AWS instance.
 
