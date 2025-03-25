@@ -8,9 +8,15 @@ This project sends and consumes messages from a FIFO SQS queue with support for 
 
 Understand the parallelization capabilities of FIFO SQS.
 
-## Characteristics of a SQS FIFO
+## Architecture Update: SNS → SQS
 
-FIFO SQS guarantees message ordering, and has the feature to manage messages by MessageGroupId.
+This project uses an SNS FIFO topic as the entry point for messages. Instead of publishing directly to the SQS FIFO queue, the producer sends messages to the SNS FIFO topic. The topic is subscribed to the queue.
+
+This simulates a more realistic architecture for distributed systems, where publishers communicate through a centralized messaging hub. FIFO behavior is still preserved thanks to the use of `MessageGroupId` and FIFO-compatible components.
+
+## Characteristics of a FIFO topic & queue
+
+FIFO guarantees message ordering, and has the feature to manage messages by MessageGroupId.
 
 The MessageGroupId needs to be assigned per message, is not a configuration on the producer or consumer level.
 
@@ -20,11 +26,31 @@ The MessageGroupId needs to be assigned per message, is not a configuration on t
 2. Create the FIFO queue:
 
     ```zsh
-        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate sqs create-queue \ 
-        --queue-name demo-queue.fifo --attributes FifoQueue=true,ContentBasedDeduplication=true
+        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+        sqs create-queue \ 
+            --queue-name demo-queue.fifo --attributes FifoQueue=true,ContentBasedDeduplication=true
     ```
 
-3. Run the Go app:
+3. Create the FIFO SNS topic:
+
+    ```zsh
+        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+        sns create-topic \
+            --name demo-topic.fifo --attributes FifoTopic=true,ContentBasedDeduplication=true
+    ```
+
+4. Subscribe the SQS queue to the SNS topic:
+
+    ```zsh
+        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+        sns subscribe \
+            --topic-arn arn:aws:sns:us-east-1:000000000000:demo-topic.fifo \
+            --protocol sqs \
+            --notification-endpoint arn:aws:sqs:us-east-1:000000000000:demo-queue.fifo \
+            --attributes '{"RawMessageDelivery":"true"}'
+    ```
+
+5. Run the Go app with the producer and consumers:
 
     ```zsh
         go run main.go
@@ -41,122 +67,125 @@ In this scenario, we use 3 different message group ids, with one consumer assign
 **Result**:
 
 ```text
-Starting FIFO SQS Producer and Consumers...
-[Producer] Sending message to: group-1 Body: group-1 - Message 1
-[Producer] Sending message to: group-1 Body: group-1 - Message 2
-[Producer] Sending message to: group-1 Body: group-1 - Message 3
-[Producer] Sending message to: group-1 Body: group-1 - Message 4
-[Producer] Sending message to: group-1 Body: group-1 - Message 5
-[Producer] Sending message to: group-1 Body: group-1 - Message 6
-[Producer] Sending message to: group-1 Body: group-1 - Message 7
-[Producer] Sending message to: group-1 Body: group-1 - Message 8
-[Producer] Sending message to: group-1 Body: group-1 - Message 9
-[Producer] Sending message to: group-1 Body: group-1 - Message 10
-[Producer] Sending message to: group-2 Body: group-2 - Message 1
-[Producer] Sending message to: group-2 Body: group-2 - Message 2
-[Producer] Sending message to: group-2 Body: group-2 - Message 3
-[Producer] Sending message to: group-2 Body: group-2 - Message 4
-[Producer] Sending message to: group-2 Body: group-2 - Message 5
-[Producer] Sending message to: group-2 Body: group-2 - Message 6
-[Producer] Sending message to: group-2 Body: group-2 - Message 7
-[Producer] Sending message to: group-2 Body: group-2 - Message 8
-[Producer] Sending message to: group-2 Body: group-2 - Message 9
-[Producer] Sending message to: group-2 Body: group-2 - Message 10
-[Producer] Sending message to: group-3 Body: group-3 - Message 1
-[Producer] Sending message to: group-3 Body: group-3 - Message 2
-[Producer] Sending message to: group-3 Body: group-3 - Message 3
-[Producer] Sending message to: group-3 Body: group-3 - Message 4
-[Producer] Sending message to: group-3 Body: group-3 - Message 5
-[Producer] Sending message to: group-3 Body: group-3 - Message 6
-[Producer] Sending message to: group-3 Body: group-3 - Message 7
-[Producer] Sending message to: group-3 Body: group-3 - Message 8
-[Producer] Sending message to: group-3 Body: group-3 - Message 9
-[Producer] Sending message to: group-3 Body: group-3 - Message 10
+Starting FIFO Producer and Consumers...
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 10
 [Consumer] Starting consumer 3 for group-3
 [Consumer] Starting consumer 1 for group-1
 [Consumer] Starting consumer 2 for group-2
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 1
+[Consumer 2][group-2] Processing: group-2 - Message 1
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 1
 [Consumer 1][group-1] Processing: group-1 - Message 1
 [Consumer 3][group-3] Processing: group-3 - Message 1
-[Consumer 2][group-2] Processing: group-2 - Message 1
-[Consumer 2][group-2] Deleted: group-2 - Message 1
 [Consumer 3][group-3] Deleted: group-3 - Message 1
-[Consumer 2][group-2] Processing: group-2 - Message 2
 [Consumer 1][group-1] Deleted: group-1 - Message 1
+[Consumer 2][group-2] Deleted: group-2 - Message 1
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 2
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 2
+[Consumer 2][group-2] Processing: group-2 - Message 2
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 2
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 2
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 2
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 2
 [Consumer 3][group-3] Processing: group-3 - Message 2
 [Consumer 1][group-1] Processing: group-1 - Message 2
-[Consumer 3][group-3] Deleted: group-3 - Message 2
 [Consumer 2][group-2] Deleted: group-2 - Message 2
-[Consumer 1][group-1] Deleted: group-1 - Message 2
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 1][group-1] Processing: group-1 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
 [Consumer 2][group-2] Processing: group-2 - Message 3
+[Consumer 3][group-3] Deleted: group-3 - Message 2
+[Consumer 1][group-1] Deleted: group-1 - Message 2
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 3
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 3
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 3
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 3
 [Consumer 3][group-3] Processing: group-3 - Message 3
-[Consumer 1][group-1] Deleted: group-1 - Message 3
-[Consumer 1][group-1] Processing: group-1 - Message 4
-[Consumer 3][group-3] Deleted: group-3 - Message 3
+[Consumer 1][group-1] Processing: group-1 - Message 3
 [Consumer 2][group-2] Deleted: group-2 - Message 3
 [Consumer 2][group-2] Processing: group-2 - Message 4
+[Consumer 3][group-3] Deleted: group-3 - Message 3
+[Consumer 1][group-1] Deleted: group-1 - Message 3
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 4
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 4
 [Consumer 3][group-3] Processing: group-3 - Message 4
-[Consumer 1][group-1] Deleted: group-1 - Message 4
-[Consumer 1][group-1] Processing: group-1 - Message 5
-[Consumer 3][group-3] Deleted: group-3 - Message 4
+[Consumer 1][group-1] Processing: group-1 - Message 4
 [Consumer 2][group-2] Deleted: group-2 - Message 4
 [Consumer 2][group-2] Processing: group-2 - Message 5
+[Consumer 3][group-3] Deleted: group-3 - Message 4
+[Consumer 1][group-1] Deleted: group-1 - Message 4
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 5
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 5
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 5
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 5
 [Consumer 3][group-3] Processing: group-3 - Message 5
-[Consumer 1][group-1] Deleted: group-1 - Message 5
-[Consumer 1][group-1] Processing: group-1 - Message 6
+[Consumer 1][group-1] Processing: group-1 - Message 5
 [Consumer 2][group-2] Deleted: group-2 - Message 5
-[Consumer 3][group-3] Deleted: group-3 - Message 5
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 6
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 6
-[Consumer 3][group-3] Processing: group-3 - Message 6
 [Consumer 2][group-2] Processing: group-2 - Message 6
-[Consumer 1][group-1] Deleted: group-1 - Message 6
-[Consumer 1][group-1] Processing: group-1 - Message 7
+[Consumer 1][group-1] Deleted: group-1 - Message 5
+[Consumer 3][group-3] Deleted: group-3 - Message 5
+[Consumer 3][group-3] Processing: group-3 - Message 6
+[Consumer 1][group-1] Processing: group-1 - Message 6
 [Consumer 2][group-2] Deleted: group-2 - Message 6
-[Consumer 3][group-3] Deleted: group-3 - Message 6
 [Consumer 2][group-2] Processing: group-2 - Message 7
+[Consumer 1][group-1] Deleted: group-1 - Message 6
+[Consumer 3][group-3] Deleted: group-3 - Message 6
+[Consumer 1][group-1] Processing: group-1 - Message 7
 [Consumer 3][group-3] Processing: group-3 - Message 7
+[Consumer 2][group-2] Deleted: group-2 - Message 7
+[Consumer 2][group-2] Processing: group-2 - Message 8
+[Consumer 3][group-3] Deleted: group-3 - Message 7
 [Consumer 1][group-1] Deleted: group-1 - Message 7
 [Consumer 1][group-1] Processing: group-1 - Message 8
-[Consumer 2][group-2] Deleted: group-2 - Message 7
-[Consumer 3][group-3] Deleted: group-3 - Message 7
 [Consumer 3][group-3] Processing: group-3 - Message 8
-[Consumer 2][group-2] Processing: group-2 - Message 8
-[Consumer 1][group-1] Deleted: group-1 - Message 8
-[Consumer 1][group-1] Processing: group-1 - Message 9
 [Consumer 2][group-2] Deleted: group-2 - Message 8
-[Consumer 3][group-3] Deleted: group-3 - Message 8
 [Consumer 2][group-2] Processing: group-2 - Message 9
+[Consumer 3][group-3] Deleted: group-3 - Message 8
+[Consumer 1][group-1] Deleted: group-1 - Message 8
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 9
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 9
+[Consumer 1][group-1] Processing: group-1 - Message 9
 [Consumer 3][group-3] Processing: group-3 - Message 9
-[Consumer 1][group-1] Deleted: group-1 - Message 9
-[Consumer 1][group-1] Processing: group-1 - Message 10
 [Consumer 2][group-2] Deleted: group-2 - Message 9
-[Consumer 3][group-3] Deleted: group-3 - Message 9
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 10
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 10
-[Consumer 3][group-3] Processing: group-3 - Message 10
 [Consumer 2][group-2] Processing: group-2 - Message 10
-[Consumer 1][group-1] Deleted: group-1 - Message 10
-[Consumer 3][group-3] Deleted: group-3 - Message 10
+[Consumer 3][group-3] Deleted: group-3 - Message 9
+[Consumer 1][group-1] Deleted: group-1 - Message 9
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 10
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 10
+[Consumer 1][group-1] Processing: group-1 - Message 10
+[Consumer 3][group-3] Processing: group-3 - Message 10
 [Consumer 2][group-2] Deleted: group-2 - Message 10
-[Consumer 1][group-1] Finished processing all messages in 22.185430208s
-[Consumer 3][group-3] Finished processing all messages in 22.246666958s
-[Consumer 2][group-2] Finished processing all messages in 22.246715834s
+[Consumer 3][group-3] Deleted: group-3 - Message 10
+[Consumer 1][group-1] Deleted: group-1 - Message 10
+[Consumer 2][group-2] Finished processing all messages in 22.194683375s
+[Consumer 1][group-1] Finished processing all messages in 22.270463333s
+[Consumer 3][group-3] Finished processing all messages in 22.270532792s
 ```
 
 As we can see, the 3 consumers are processing the messages in parallel and in expected order.
@@ -178,141 +207,149 @@ In this scenario, we instantiate 3 consumers for message group id 1, and one con
 **Result**:
 
 ```text
-Starting FIFO SQS Producer and Consumers...
-[Producer] Sending message to: group-1 Body: group-1 - Message 1
-[Producer] Sending message to: group-1 Body: group-1 - Message 2
-[Producer] Sending message to: group-1 Body: group-1 - Message 3
-[Producer] Sending message to: group-1 Body: group-1 - Message 4
-[Producer] Sending message to: group-1 Body: group-1 - Message 5
-[Producer] Sending message to: group-1 Body: group-1 - Message 6
-[Producer] Sending message to: group-1 Body: group-1 - Message 7
-[Producer] Sending message to: group-1 Body: group-1 - Message 8
-[Producer] Sending message to: group-1 Body: group-1 - Message 9
-[Producer] Sending message to: group-1 Body: group-1 - Message 10
-[Producer] Sending message to: group-2 Body: group-2 - Message 1
-[Producer] Sending message to: group-2 Body: group-2 - Message 2
-[Producer] Sending message to: group-2 Body: group-2 - Message 3
-[Producer] Sending message to: group-2 Body: group-2 - Message 4
-[Producer] Sending message to: group-2 Body: group-2 - Message 5
-[Producer] Sending message to: group-2 Body: group-2 - Message 6
-[Producer] Sending message to: group-2 Body: group-2 - Message 7
-[Producer] Sending message to: group-2 Body: group-2 - Message 8
-[Producer] Sending message to: group-2 Body: group-2 - Message 9
-[Producer] Sending message to: group-2 Body: group-2 - Message 10
-[Producer] Sending message to: group-3 Body: group-3 - Message 1
-[Producer] Sending message to: group-3 Body: group-3 - Message 2
-[Producer] Sending message to: group-3 Body: group-3 - Message 3
-[Producer] Sending message to: group-3 Body: group-3 - Message 4
-[Producer] Sending message to: group-3 Body: group-3 - Message 5
-[Producer] Sending message to: group-3 Body: group-3 - Message 6
-[Producer] Sending message to: group-3 Body: group-3 - Message 7
-[Producer] Sending message to: group-3 Body: group-3 - Message 8
-[Producer] Sending message to: group-3 Body: group-3 - Message 9
-[Producer] Sending message to: group-3 Body: group-3 - Message 10
+Starting FIFO Producer and Consumers...
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 10
 [Consumer] Starting consumer 3 for group-3
-[Consumer] Starting consumer 3 for group-1
-[Consumer] Starting consumer 1 for group-1
-[Consumer] Starting consumer 2 for group-2
 [Consumer] Starting consumer 2 for group-1
-[Consumer 3][group-1] Processing: group-1 - Message 1
-[Consumer 3][group-3] Processing: group-3 - Message 1
+[Consumer] Starting consumer 3 for group-1
+[Consumer] Starting consumer 2 for group-2
+[Consumer] Starting consumer 1 for group-1
+[Consumer 3][group-3] Ignoring message from another group: group-1 - Message 1
+[Consumer 2][group-1] Ignoring message from another group: group-3 - Message 1
 [Consumer 2][group-2] Processing: group-2 - Message 1
-[Consumer 1][group-1] Finished processing all messages in 2.017757208s
-[Consumer 3][group-1] Deleted: group-1 - Message 1
-[Consumer 2][group-1] Processing: group-1 - Message 2
+[Consumer 1][group-1] Processing: group-1 - Message 1
+[Consumer 3][group-1] Ignoring message from another group: group-3 - Message 1
+[Consumer 3][group-3] Processing: group-3 - Message 1
 [Consumer 2][group-2] Deleted: group-2 - Message 1
-[Consumer 3][group-3] Deleted: group-3 - Message 1
+[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 2
+[Consumer 1][group-1] Deleted: group-1 - Message 1
 [Consumer 2][group-2] Ignoring message from another group: group-3 - Message 2
-[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 2
+[Consumer 3][group-1] Processing: group-1 - Message 2
+[Consumer 3][group-3] Deleted: group-3 - Message 1
 [Consumer 3][group-3] Processing: group-3 - Message 2
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 2
+[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 2
 [Consumer 2][group-2] Processing: group-2 - Message 2
-[Consumer 2][group-1] Deleted: group-1 - Message 2
-[Consumer 3][group-1] Processing: group-1 - Message 3
+[Consumer 3][group-1] Deleted: group-1 - Message 2
+[Consumer 1][group-1] Processing: group-1 - Message 3
 [Consumer 3][group-3] Deleted: group-3 - Message 2
-[Consumer 2][group-2] Deleted: group-2 - Message 2
 [Consumer 2][group-1] Ignoring message from another group: group-3 - Message 3
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 3
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 3
-[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 3
+[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 3
+[Consumer 2][group-2] Deleted: group-2 - Message 2
 [Consumer 3][group-3] Processing: group-3 - Message 3
 [Consumer 2][group-2] Processing: group-2 - Message 3
-[Consumer 3][group-1] Deleted: group-1 - Message 3
+[Consumer 1][group-1] Deleted: group-1 - Message 3
 [Consumer 2][group-1] Processing: group-1 - Message 4
-[Consumer 2][group-2] Deleted: group-2 - Message 3
 [Consumer 3][group-3] Deleted: group-3 - Message 3
-[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 4
+[Consumer 2][group-2] Deleted: group-2 - Message 3
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 4
+[Consumer 3][group-1] Ignoring message from another group: group-3 - Message 4
 [Consumer 3][group-3] Processing: group-3 - Message 4
 [Consumer 2][group-2] Processing: group-2 - Message 4
 [Consumer 2][group-1] Deleted: group-1 - Message 4
 [Consumer 3][group-1] Processing: group-1 - Message 5
 [Consumer 3][group-3] Deleted: group-3 - Message 4
-[Consumer 2][group-1] Ignoring message from another group: group-3 - Message 5
 [Consumer 2][group-2] Deleted: group-2 - Message 4
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 5
+[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 5
+[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 5
+[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 5
+[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 5
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 5
 [Consumer 3][group-3] Ignoring message from another group: group-2 - Message 5
 [Consumer 2][group-2] Ignoring message from another group: group-3 - Message 5
-[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 5
-[Consumer 3][group-3] Processing: group-3 - Message 5
+[Consumer 2][group-1] Ignoring message from another group: group-3 - Message 5
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 5
+[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 5
+[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 5
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 5
+[Consumer 2][group-1] Ignoring message from another group: group-3 - Message 5
 [Consumer 2][group-2] Processing: group-2 - Message 5
+[Consumer 3][group-3] Processing: group-3 - Message 5
 [Consumer 3][group-1] Deleted: group-1 - Message 5
-[Consumer 2][group-1] Processing: group-1 - Message 6
+[Consumer 1][group-1] Processing: group-1 - Message 6
+[Consumer 2][group-1] Finished processing all messages in 10.14486175s
 [Consumer 2][group-2] Deleted: group-2 - Message 5
-[Consumer 3][group-3] Deleted: group-3 - Message 5
 [Consumer 3][group-1] Ignoring message from another group: group-2 - Message 6
+[Consumer 3][group-3] Deleted: group-3 - Message 5
 [Consumer 2][group-2] Ignoring message from another group: group-3 - Message 6
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 6
-[Consumer 3][group-1] Ignoring message from another group: group-3 - Message 6
-[Consumer 2][group-2] Processing: group-2 - Message 6
+[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 6
 [Consumer 3][group-3] Processing: group-3 - Message 6
-[Consumer 2][group-1] Deleted: group-1 - Message 6
+[Consumer 2][group-2] Processing: group-2 - Message 6
+[Consumer 1][group-1] Deleted: group-1 - Message 6
 [Consumer 3][group-1] Processing: group-1 - Message 7
-[Consumer 2][group-2] Deleted: group-2 - Message 6
-[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 7
 [Consumer 3][group-3] Deleted: group-3 - Message 6
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 7
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 7
-[Consumer 2][group-1] Ignoring message from another group: group-3 - Message 7
-[Consumer 2][group-2] Processing: group-2 - Message 7
+[Consumer 1][group-1] Ignoring message from another group: group-3 - Message 7
+[Consumer 2][group-2] Deleted: group-2 - Message 6
 [Consumer 3][group-3] Processing: group-3 - Message 7
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 7
+[Consumer 2][group-2] Processing: group-2 - Message 7
 [Consumer 3][group-1] Deleted: group-1 - Message 7
-[Consumer 2][group-1] Processing: group-1 - Message 8
+[Consumer 1][group-1] Processing: group-1 - Message 8
 [Consumer 2][group-2] Deleted: group-2 - Message 7
-[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 8
 [Consumer 3][group-3] Deleted: group-3 - Message 7
 [Consumer 2][group-2] Ignoring message from another group: group-3 - Message 8
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 8
-[Consumer 3][group-1] Ignoring message from another group: group-3 - Message 8
-[Consumer 2][group-2] Processing: group-2 - Messåage 8
+[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 8
 [Consumer 3][group-3] Processing: group-3 - Message 8
-[Consumer 2][group-1] Deleted: group-1 - Message 8
+[Consumer 2][group-2] Processing: group-2 - Message 8
+[Consumer 1][group-1] Deleted: group-1 - Message 8
 [Consumer 3][group-1] Processing: group-1 - Message 9
 [Consumer 2][group-2] Deleted: group-2 - Message 8
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 9
 [Consumer 3][group-3] Deleted: group-3 - Message 8
-[Consumer 2][group-1] Ignoring message from another group: group-2 - Message 9
+[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 9
+[Consumer 1][group-1] Ignoring message from another group: group-2 - Message 9
 [Consumer 3][group-3] Processing: group-3 - Message 9
 [Consumer 2][group-2] Processing: group-2 - Message 9
 [Consumer 3][group-1] Deleted: group-1 - Message 9
-[Consumer 2][group-1] Processing: group-1 - Message 10
+[Consumer 1][group-1] Processing: group-1 - Message 10
 [Consumer 2][group-2] Deleted: group-2 - Message 9
-[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 10
 [Consumer 3][group-3] Deleted: group-3 - Message 9
-[Consumer 2][group-2] Ignoring message from another group: group-3 - Message 10
-[Consumer 3][group-3] Ignoring message from another group: group-2 - Message 10
-[Consumer 3][group-1] Ignoring message from another group: group-3 - Message 10
-[Consumer 2][group-2] Processing: group-2 - Message 10
+[Consumer 3][group-1] Ignoring message from another group: group-2 - Message 10
 [Consumer 3][group-3] Processing: group-3 - Message 10
-[Consumer 2][group-1] Deleted: group-1 - Message 10
+[Consumer 2][group-2] Processing: group-2 - Message 10
+[Consumer 1][group-1] Deleted: group-1 - Message 10
 [Consumer 3][group-3] Deleted: group-3 - Message 10
-[Consumer 3][group-1] Finished processing all messages in 20.253350625s
+[Consumer 3][group-1] Finished processing all messages in 20.255861792s
 [Consumer 2][group-2] Deleted: group-2 - Message 10
-[Consumer 2][group-1] Finished processing all messages in 22.14954825s
-[Consumer 3][group-3] Finished processing all messages in 22.2607045s
-[Consumer 2][group-2] Finished processing all messages in 22.2621265s
+[Consumer 1][group-1] Finished processing all messages in 22.150736083s
+[Consumer 3][group-3] Finished processing all messages in 22.261156667s
+[Consumer 2][group-2] Finished processing all messages in 22.261213083s
 ```
 
-At the beginning of the run, we see the following log line:
+At the middle of the run, we see the following log line:
 
 ``
-[Consumer 1][group-1] Finished processing all messages in 2.017757208s
+[Consumer 2][group-1] Finished processing all messages in 10.14486175s
 ``
 
 This happened due to starvation. FIFO queue guarantees order, so the messages get locked until processed. Having 3 consumers for same group causes them to race for the message.
