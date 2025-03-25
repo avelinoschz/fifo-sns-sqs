@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,31 +20,60 @@ import (
 )
 
 const (
-	queueURL         = "http://localhost:4566/000000000000/demo-queue.fifo"
-	topicARN         = "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo"
-	region           = "us-east-1"
+	useLocalstack    = true
 	messagesPerGroup = 10
+)
+
+var (
+	queueURL string
+	topicARN string
+	region   string
 )
 
 var groups = []string{"group-1", "group-2", "group-3"}
 
 var group1Consumers = 1
 
+func init() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	region = "us-east-1"
+	if useLocalstack {
+		queueURL = "http://localhost:4566/000000000000/demo-queue.fifo"
+		topicARN = "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo"
+	} else {
+		queueURL = os.Getenv("AWS_QUEUE_URL")
+		topicARN = os.Getenv("AWS_TOPIC_ARN")
+	}
+}
+
 func main() {
 	fmt.Println("Starting FIFO Producer and Consumers...")
 
 	ctx := context.Background()
 
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
-		config.WithEndpointResolver(aws.EndpointResolverFunc(func(service, region string) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				URL:           "http://localhost:4566",
-				SigningRegion: region,
-			}, nil
-		})),
-	)
+	var cfg aws.Config
+	var err error
+
+	if useLocalstack {
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
+			config.WithEndpointResolver(aws.EndpointResolverFunc(func(service, region string) (aws.Endpoint, error) {
+				return aws.Endpoint{
+					URL:           "http://localhost:4566",
+					SigningRegion: region,
+				}, nil
+			})),
+		)
+	} else {
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+		)
+	}
+
 	if err != nil {
 		log.Fatalf("failed to load AWS config: %v", err)
 	}
