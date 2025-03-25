@@ -11,22 +11,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 const (
 	queueURL         = "http://localhost:4566/000000000000/demo-queue.fifo"
+	topicARN         = "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo"
 	region           = "us-east-1"
 	messagesPerGroup = 10
 )
 
 var groups = []string{"group-1", "group-2", "group-3"}
 
-var group1Consumers = 3
+var group1Consumers = 1
 
 func main() {
-	fmt.Println("Starting FIFO SQS Producer and Consumers...")
+	fmt.Println("Starting FIFO Producer and Consumers...")
 
 	ctx := context.Background()
 
@@ -44,12 +46,13 @@ func main() {
 		log.Fatalf("failed to load AWS config: %v", err)
 	}
 
-	client := sqs.NewFromConfig(cfg)
+	sqsClient := sqs.NewFromConfig(cfg)
+	snsClient := sns.NewFromConfig(cfg)
 
 	// sending 10 messages per group
 	for _, groupID := range groups {
 		for i := 0; i < messagesPerGroup; i++ {
-			sendMessage(ctx, client, fmt.Sprintf("%s - Message %d", groupID, i+1), groupID)
+			sendToSNS(ctx, snsClient, fmt.Sprintf("%s - Message %d", groupID, i+1), groupID)
 		}
 	}
 
@@ -60,7 +63,7 @@ func main() {
 		wg.Add(1)
 		go func(id int) {
 			fmt.Println("[Consumer] Starting consumer", id, "for group-1")
-			consumeOnlyGroup(ctx, client, id, "group-1", &wg)
+			consumeOnlyGroup(ctx, sqsClient, id, "group-1", &wg)
 		}(i)
 	}
 
@@ -68,30 +71,30 @@ func main() {
 	wg.Add(1)
 	go func() {
 		fmt.Println("[Consumer] Starting consumer", 2, "for group-2")
-		consumeOnlyGroup(ctx, client, 2, "group-2", &wg)
+		consumeOnlyGroup(ctx, sqsClient, 2, "group-2", &wg)
 	}()
 
 	// group-3: 1 consumer
 	wg.Add(1)
 	go func() {
 		fmt.Println("[Consumer] Starting consumer", 3, "for group-3")
-		consumeOnlyGroup(ctx, client, 3, "group-3", &wg)
+		consumeOnlyGroup(ctx, sqsClient, 3, "group-3", &wg)
 	}()
 
 	wg.Wait()
 }
 
-func sendMessage(ctx context.Context, client *sqs.Client, body string, groupID string) {
-	fmt.Println("[Producer] Sending message to:", groupID, "Body:", body)
+func sendToSNS(ctx context.Context, client *sns.Client, body string, groupID string) {
+	fmt.Println("[Producer] Sending message to SNS topic:", topicARN, "GroupId:", groupID, "Body:", body)
 
-	_, err := client.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:               aws.String(queueURL),
-		MessageBody:            aws.String(body),
+	_, err := client.Publish(ctx, &sns.PublishInput{
+		Message:                aws.String(body),
+		TopicArn:               aws.String(topicARN),
 		MessageGroupId:         aws.String(groupID),
 		MessageDeduplicationId: aws.String(fmt.Sprintf("%s-%d", groupID, time.Now().UnixNano())),
 	})
 	if err != nil {
-		log.Printf("[Producer] failed to send message to %s: %v", groupID, err)
+		log.Printf("[Producer] failed to send message to %s: %v", topicARN, err)
 	}
 }
 
@@ -148,7 +151,7 @@ func consumeOnlyGroup(ctx context.Context, client *sqs.Client, consumerID int, e
 	}
 }
 
-// simple check based on group name in message body (group Id is not returned by ReceiveMessage)
+// simple check based on group name in message body (group ID is not returned by ReceiveMessage)
 // supposedly, it should be on the msg metadata map, but didn't find it
 func isGroupMessage(msg types.Message, group string) bool {
 	return msg.Body != nil && len(*msg.Body) > 0 && contains(*msg.Body, group)
