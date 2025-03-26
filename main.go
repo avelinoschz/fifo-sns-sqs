@@ -20,8 +20,15 @@ import (
 )
 
 const (
-	useLocalstack    = true
+	useLocalstack = true
+	groupSpecific = false
+
+	numGroups        = 6
 	messagesPerGroup = 10
+
+	// configure number of consumers for different modes
+	group1numConsumers  = 1 // consumers for group-1 in group-specific mode
+	generalNumConsumers = 3 // total consumers when not group-specific
 )
 
 var (
@@ -31,9 +38,13 @@ var (
 	profile  string
 )
 
-var groups = []string{"group-1", "group-2", "group-3"}
-
-var group1Consumers = 1
+func generateGroups() []string {
+	groups := make([]string, numGroups)
+	for i := 0; i < numGroups; i++ {
+		groups[i] = fmt.Sprintf("group-%d", i+1)
+	}
+	return groups
+}
 
 func init() {
 	if err := godotenv.Load(); err != nil {
@@ -85,7 +96,8 @@ func main() {
 	sqsClient := sqs.NewFromConfig(cfg)
 	snsClient := sns.NewFromConfig(cfg)
 
-	// sending 10 messages per group
+	groups := generateGroups()
+	// sending messages per group
 	for _, groupID := range groups {
 		for i := 0; i < messagesPerGroup; i++ {
 			sendToSNS(ctx, snsClient, fmt.Sprintf("%s - Message %d", groupID, i+1), groupID)
@@ -94,28 +106,41 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	// group-1: 3 consumers
-	for i := 1; i <= group1Consumers; i++ {
-		wg.Add(1)
-		go func(id int) {
-			fmt.Println("[Consumer] Starting consumer", id, "for group-1")
-			consumeOnlyGroup(ctx, sqsClient, id, "group-1", &wg)
-		}(i)
+	if groupSpecific {
+		// start a specific consumer for each group
+		for groupNum := 1; groupNum <= numGroups; groupNum++ {
+			groupID := fmt.Sprintf("group-%d", groupNum)
+
+			// for group-1, start configured number of consumers
+			if groupNum == 1 {
+				for i := 1; i <= group1numConsumers; i++ {
+					wg.Add(1)
+					go func(id int, gID string) {
+						fmt.Printf("[Consumer] Starting consumer %d for %s\n", id, gID)
+						consumeOnlyGroup(ctx, sqsClient, id, gID, &wg)
+					}(i, groupID)
+				}
+				continue
+			}
+
+			// for other groups, start one consumer each
+			wg.Add(1)
+			go func(id int, gID string) {
+				fmt.Printf("[Consumer] Starting consumer %d for %s\n", id, gID)
+				consumeOnlyGroup(ctx, sqsClient, id, gID, &wg)
+			}(groupNum, groupID)
+		}
+	} else {
+		// start the non group specific consumers
+		for i := 1; i <= generalNumConsumers; i++ {
+			wg.Add(1)
+			go func(id int) {
+				fmt.Printf("[Consumer] Starting general consumer %d (total consumers: %d)\n",
+					id, generalNumConsumers)
+				consumeAllMessages(ctx, sqsClient, id, &wg)
+			}(i)
+		}
 	}
-
-	// group-2: 1 consumer
-	wg.Add(1)
-	go func() {
-		fmt.Println("[Consumer] Starting consumer", 2, "for group-2")
-		consumeOnlyGroup(ctx, sqsClient, 2, "group-2", &wg)
-	}()
-
-	// group-3: 1 consumer
-	wg.Add(1)
-	go func() {
-		fmt.Println("[Consumer] Starting consumer", 3, "for group-3")
-		consumeOnlyGroup(ctx, sqsClient, 3, "group-3", &wg)
-	}()
 
 	wg.Wait()
 }
@@ -131,6 +156,44 @@ func sendToSNS(ctx context.Context, client *sns.Client, body string, groupID str
 	})
 	if err != nil {
 		log.Printf("[Producer] failed to send message to %s: %v", topicARN, err)
+	}
+}
+
+func consumeAllMessages(ctx context.Context, client *sqs.Client, consumerID int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	start := time.Now()
+
+	for {
+		resp, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl:            aws.String(queueURL),
+			MaxNumberOfMessages: 1,
+			WaitTimeSeconds:     2,
+		})
+		if err != nil {
+			log.Printf("[Consumer %d] Error receiving: %v", consumerID, err)
+			continue
+		}
+		if len(resp.Messages) == 0 {
+			elapsed := time.Since(start)
+			log.Printf("[Consumer %d] Finished processing all messages in %v", consumerID, elapsed)
+			return
+		}
+
+		msg := resp.Messages[0]
+		log.Printf("[Consumer %d] Processing: %s", consumerID, *msg.Body)
+
+		// processing the message
+		time.Sleep(2 * time.Second)
+
+		_, err = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+			QueueUrl:      aws.String(queueURL),
+			ReceiptHandle: msg.ReceiptHandle,
+		})
+		if err != nil {
+			log.Printf("[Consumer %d] Error deleting message: %v", consumerID, err)
+		} else {
+			log.Printf("[Consumer %d] Deleted: %s", consumerID, *msg.Body)
+		}
 	}
 }
 
