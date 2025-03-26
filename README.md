@@ -1,70 +1,76 @@
 # FIFO-SNS-SQS
 
-A local FIFO SQS simulator using AWS SDK and LocalStack.
+A FIFO SNS + SQS consumer using AWS SDK and LocalStack. An updated version interacting with an AWS instance.
 
-This project sends and consumes messages to a FIFO SNS and SQS with support for multiple message groups and concurrent consumers. Useful for testing message ordering and consumer behavior in a FIFO topic and queue setup.
+This project demonstrates sending and consuming messages using FIFO SNS topics and SQS queues with support for multiple message groups and concurrent consumers. It's useful for testing message ordering and consumer behavior in a FIFO topic and queue setup.
 
-## Architecture SNS → SQS
+## Architecture: SNS → SQS
 
-This project uses an SNS FIFO topic as the entry point for messages. Instead of publishing directly to the SQS FIFO queue, the producer sends messages to the SNS FIFO topic. The topic is subscribed to the queue.
+This project implements a fan-out architecture where an SNS FIFO topic serves as the entry point for messages. Instead of publishing directly to the SQS FIFO queue, the producer sends messages to the SNS FIFO topic, which is subscribed to the queue.
 
-This simulates a more realistic architecture for distributed systems, where publishers communicate through a centralized messaging hub. FIFO behavior is still preserved thanks to the use of `MessageGroupId` and FIFO-compatible components.
+This approach simulates a more realistic architecture for distributed systems, where publishers communicate through a centralized messaging hub. Despite this additional layer, FIFO behavior (First-In-First-Out) is still preserved thanks to the use of `MessageGroupId` and FIFO-compatible components.
 
 ## Goal
 
-Understand the parallelization capabilities of FIFO SQS.
+The primary goal of this project is to understand and demonstrate the parallelization capabilities of FIFO SQS and how message groups affect processing.
 
-## Characteristics of a FIFO topic & queue
+## Key Characteristics of FIFO Topics & Queues
 
-FIFO guarantees message ordering, and has the feature to manage messages by MessageGroupId.
+FIFO queues guarantee message ordering and provide the ability to manage messages by MessageGroupId. Key points to understand:
 
-The MessageGroupId needs to be assigned per message, is not a configuration on the producer or consumer level.
+- Messages with the same MessageGroupId are processed in strict order
+- Messages with different MessageGroupIds can be processed in parallel
+- MessageGroupId is assigned at the message level, not at the producer or consumer level
+- Only one consumer can process messages from a specific MessageGroupId at a time
 
-For more information on the SQS delivery logic here is the [documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues-understanding-logic.html).
+For more details on the SQS delivery logic, refer to the [AWS documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues-understanding-logic.html).
 
 ## How to Run
 
 1. Install [LocalStack](https://docs.localstack.cloud/get-started/)
+
 2. Create the FIFO queue:
 
     ```zsh
-        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
-        sqs create-queue \ 
-            --queue-name demo-queue.fifo --attributes FifoQueue=true,ContentBasedDeduplication=true
+    aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+    sqs create-queue \ 
+        --queue-name demo-queue.fifo --attributes FifoQueue=true,ContentBasedDeduplication=true
     ```
 
 3. Create the FIFO SNS topic:
 
     ```zsh
-        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
-        sns create-topic \
-            --name demo-topic.fifo --attributes FifoTopic=true,ContentBasedDeduplication=true
+    aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+    sns create-topic \
+        --name demo-topic.fifo --attributes FifoTopic=true,ContentBasedDeduplication=true
     ```
 
 4. Subscribe the SQS queue to the SNS topic:
 
     ```zsh
-        aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
-        sns subscribe \
-            --topic-arn arn:aws:sns:us-east-1:000000000000:demo-topic.fifo \
-            --protocol sqs \
-            --notification-endpoint arn:aws:sqs:us-east-1:000000000000:demo-queue.fifo \
-            --attributes '{"RawMessageDelivery":"true"}'
+    aws --endpoint-url=http://localhost:4566 --region=us-east-1 --no-sign-request --no-paginate \
+    sns subscribe \
+        --topic-arn arn:aws:sns:us-east-1:000000000000:demo-topic.fifo \
+        --protocol sqs \
+        --notification-endpoint arn:aws:sqs:us-east-1:000000000000:demo-queue.fifo \
+        --attributes '{"RawMessageDelivery":"true"}'
     ```
 
 5. Run the Go app with the producer and consumers:
 
     ```zsh
-        go run main.go
+    go run main.go
     ```
 
-## Test Scenarios: Localstack
+## Test Scenarios: LocalStack
 
-### Scenario 1: Group specific consumers. One Consumer Per Group
+The following scenarios demonstrate different configurations of message groups and consumers to show how FIFO queues handle concurrent processing.
 
-In this scenario, we use 3 different message group ids, with one consumer assigned to each group.
+### Scenario 1: Group-specific Consumers - One Consumer Per Group
 
-**Expected Behavior**: Messages should be processed in parallel, with strict ordering within each group.
+In this scenario, we assign three different message group IDs, with one dedicated consumer for each group.
+
+**Expected Behavior**: Messages should be processed in parallel across groups, with strict ordering maintained within each individual group.
 
 **Result**:
 
@@ -200,7 +206,7 @@ One important detail is that `MessageGroupId` is assigned at the **message level
 
 This happens because SQS FIFO does not route messages based on `MessageGroupId`. It is up to the application to implement group-based filtering after receiving messages.
 
-### Scenario 2: Group specific consumers. One group with multiple consumers and rest one consumer each
+### Scenario 2: Group-specific Consumers - One Group with Multiple Consumers and Rest One Consumer Each
 
 In this scenario, we instantiate 3 consumers for message group id 1, and one consumer each for groups 2 and 3.
 
@@ -356,7 +362,7 @@ At the middle of the run, we see the following log line:
 
 This happened due to starvation. FIFO queue guarantees order, so the messages get locked until processed. Having 3 consumers for same group causes them to race for the message.
 
-### Scenario 3: Non-group specific consumers. matching the number of consumers and groups
+### Scenario 3: Non-group specific Consumers - Matching the Number of Consumers and Groups
 
 ```text
 Starting FIFO Producer and Consumers...
@@ -462,7 +468,7 @@ Using Localstack for development
 Since the test doesn't have any specific logic inside the consumer, like a configuration or state, etc.
 All the processing happened smoothly and in order by MessageGroupId as promised.
 
-### Scenario 4: Non-group specific. more consumers than groups
+### Scenario 4: Non-group specific Consumers - More Consumers than Groups
 
 ```text
 Starting FIFO Producer and Consumers...
@@ -571,9 +577,9 @@ Using Localstack for development
 
 This test was configured with only 5 non-group specific consumers and 3 message group ids. As in the group specific one with multiple consumers per group, there are a couple of consumers that starved and stopped working because there were no messages for them to process. With only 3 message group ids, only 3 message group ids, only 3 messages could be processed at a time.
 
-## Test Scenarios: Actual AWS instance
+## Test Scenarios: Actual AWS Instance
 
-### Scenario 5: Group specific consumers. One Consumer Per Group
+### Scenario 5: Group-specific Consumers - One Consumer Per Group
 
 In this scenario, we instantiate one consumer for groups each group and are connecting directly to an actual AWS instance.
 
@@ -957,7 +963,7 @@ Connecting to AWS using profile
 
 This specific scenario seems like something is happening around the acknowledgment. You can see processing time is shorter that previous test. This is due to the ignoring of messages not getting re-processed.
 
-### Scenario 6: Non-group specific. More consumers than groups
+### Scenario 6: Non-group specific Consumers - More Consumers than Groups
 
 ```text
 Starting FIFO Producer and Consumers...
