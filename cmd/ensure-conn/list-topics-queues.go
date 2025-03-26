@@ -4,41 +4,29 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
+	"sqs-fifo/pkg/config"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/joho/godotenv"
 )
 
 func main() {
 	ctx := context.Background()
 
-	if err := godotenv.Load("../.env"); err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	profile := os.Getenv("AWS_PROFILE")
-	if profile == "" {
-		profile = "default"
-	}
-
-	// load the AWS config using a named profile
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(profile),
-	)
+	// Initialize connection settings from config
+	cfg, err := config.LoadAWSConfig(ctx)
 	if err != nil {
 		log.Fatalf("unable to load AWS config: %v", err)
 	}
 
+	// List SQS queues
 	sqsClient := sqs.NewFromConfig(cfg)
 	sqsOut, err := sqsClient.ListQueues(ctx, &sqs.ListQueuesInput{})
 	if err != nil {
 		log.Fatalf("failed to list SQS queues: %v", err)
 	}
 
-	fmt.Println("🟦 SQS Queues:")
+	fmt.Println("\n🟦 SQS Queues:")
 	if len(sqsOut.QueueUrls) == 0 {
 		fmt.Println("  (no queues found)")
 	} else {
@@ -47,6 +35,7 @@ func main() {
 		}
 	}
 
+	// List SNS topics
 	snsClient := sns.NewFromConfig(cfg)
 	snsOut, err := snsClient.ListTopics(ctx, &sns.ListTopicsInput{})
 	if err != nil {
