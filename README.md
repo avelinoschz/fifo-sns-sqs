@@ -20,6 +20,8 @@ FIFO guarantees message ordering, and has the feature to manage messages by Mess
 
 The MessageGroupId needs to be assigned per message, is not a configuration on the producer or consumer level.
 
+For more information on the SQS delivery logic here is the [documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues-understanding-logic.html).
+
 ## How to Run
 
 1. Install [LocalStack](https://docs.localstack.cloud/get-started/)
@@ -56,9 +58,9 @@ The MessageGroupId needs to be assigned per message, is not a configuration on t
         go run main.go
     ```
 
-## Test Scenarios
+## Test Scenarios: Localstack
 
-### Scenario 1: One Consumer Per Group
+### Scenario 1: Group specific consumers. One Consumer Per Group
 
 In this scenario, we use 3 different message group ids, with one consumer assigned to each group.
 
@@ -198,7 +200,7 @@ One important detail is that `MessageGroupId` is assigned at the **message level
 
 This happens because SQS FIFO does not route messages based on `MessageGroupId`. It is up to the application to implement group-based filtering after receiving messages.
 
-### Scenario 2: Multiple Consumers for One Group
+### Scenario 2: Group specific consumers. One group with multiple consumers and rest one consumer each
 
 In this scenario, we instantiate 3 consumers for message group id 1, and one consumer each for groups 2 and 3.
 
@@ -354,17 +356,224 @@ At the middle of the run, we see the following log line:
 
 This happened due to starvation. FIFO queue guarantees order, so the messages get locked until processed. Having 3 consumers for same group causes them to race for the message.
 
-## Conclusions
+### Scenario 3: Non-group specific consumers. matching the number of consumers and groups
 
-- SQS FIFO queues guarantee strict ordering within a MessageGroupId.
-- Only one message per group can be processed at a time, even with multiple consumers.
-- Parallel processing is only achieved when multiple distinct MessageGroupIds are used.
-- Extra consumers for the same group do not improve throughput.
-- Consumers may receive messages for the wrong group and must implement filtering logic.
+```text
+Starting FIFO Producer and Consumers...
+Using Localstack for development
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 10
+[Consumer] Starting general consumer 3
+[Consumer] Starting general consumer 1
+[Consumer] Starting general consumer 2
+[Consumer 2] Processing: group-1 - Message 1
+[Consumer 1] Processing: group-2 - Message 1
+[Consumer 3] Processing: group-3 - Message 1
+[Consumer 3] Deleted: group-3 - Message 1
+[Consumer 1] Deleted: group-2 - Message 1
+[Consumer 2] Deleted: group-1 - Message 1
+[Consumer 2] Processing: group-1 - Message 2
+[Consumer 1] Processing: group-2 - Message 2
+[Consumer 3] Processing: group-3 - Message 2
+[Consumer 3] Deleted: group-3 - Message 2
+[Consumer 1] Deleted: group-2 - Message 2
+[Consumer 1] Processing: group-2 - Message 3
+[Consumer 3] Processing: group-3 - Message 3
+[Consumer 2] Deleted: group-1 - Message 2
+[Consumer 2] Processing: group-1 - Message 3
+[Consumer 2] Deleted: group-1 - Message 3
+[Consumer 3] Deleted: group-3 - Message 3
+[Consumer 1] Deleted: group-2 - Message 3
+[Consumer 2] Processing: group-1 - Message 4
+[Consumer 3] Processing: group-2 - Message 4
+[Consumer 1] Processing: group-3 - Message 4
+[Consumer 2] Deleted: group-1 - Message 4
+[Consumer 1] Deleted: group-3 - Message 4
+[Consumer 2] Processing: group-1 - Message 5
+[Consumer 3] Deleted: group-2 - Message 4
+[Consumer 1] Processing: group-3 - Message 5
+[Consumer 3] Processing: group-2 - Message 5
+[Consumer 3] Deleted: group-2 - Message 5
+[Consumer 1] Deleted: group-3 - Message 5
+[Consumer 2] Deleted: group-1 - Message 5
+[Consumer 3] Processing: group-2 - Message 6
+[Consumer 2] Processing: group-1 - Message 6
+[Consumer 1] Processing: group-3 - Message 6
+[Consumer 3] Deleted: group-2 - Message 6
+[Consumer 1] Deleted: group-3 - Message 6
+[Consumer 2] Deleted: group-1 - Message 6
+[Consumer 2] Processing: group-2 - Message 7
+[Consumer 1] Processing: group-3 - Message 7
+[Consumer 3] Processing: group-1 - Message 7
+[Consumer 2] Deleted: group-2 - Message 7
+[Consumer 1] Deleted: group-3 - Message 7
+[Consumer 2] Processing: group-2 - Message 8
+[Consumer 3] Deleted: group-1 - Message 7
+[Consumer 1] Processing: group-3 - Message 8
+[Consumer 3] Processing: group-1 - Message 8
+[Consumer 3] Deleted: group-1 - Message 8
+[Consumer 1] Deleted: group-3 - Message 8
+[Consumer 2] Deleted: group-2 - Message 8
+[Consumer 1] Processing: group-3 - Message 9
+[Consumer 3] Processing: group-1 - Message 9
+[Consumer 2] Processing: group-2 - Message 9
+[Consumer 3] Deleted: group-1 - Message 9
+[Consumer 2] Deleted: group-2 - Message 9
+[Consumer 1] Deleted: group-3 - Message 9
+[Consumer 3] Processing: group-2 - Message 10
+[Consumer 2] Processing: group-3 - Message 10
+[Consumer 1] Processing: group-1 - Message 10
+[Consumer 1] Deleted: group-1 - Message 10
+[Consumer 3] Deleted: group-2 - Message 10
+[Consumer 2] Deleted: group-3 - Message 10
+[Consumer 3] Finished processing all messages in 22.227423209s
+[Consumer 1] Finished processing all messages in 22.227425s
+[Consumer 2] Finished processing all messages in 22.228402458s
+```
 
-**Note**: In this test, messages used a naming convention to identify their group. In production, group info should be extracted from message metadata or payload, depending on how it's published.
+Since the test doesn't have any specific logic inside the consumer, like a configuration or state, etc.
+All the processing happened smoothly and in order by MessageGroupId as promised.
 
-## Updated version: Scenario 3: One Consumer Per Group going through actual SNS + SQS AWS services
+### Scenario 4: Non-group specific. more consumers than groups
+
+```text
+Starting FIFO Producer and Consumers...
+Using Localstack for development
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 10
+[Consumer] Starting general consumer 5
+[Consumer] Starting general consumer 2
+[Consumer] Starting general consumer 3
+[Consumer] Starting general consumer 1
+[Consumer] Starting general consumer 4
+[Consumer 1] Processing: group-1 - Message 2
+[Consumer 5] Processing: group-2 - Message 1
+[Consumer 4] Processing: group-3 - Message 1
+[Consumer 2] Finished processing all messages in 2.024538833s
+[Consumer 3] Finished processing all messages in 2.024972833s
+[Consumer 1] Deleted: group-1 - Message 2
+[Consumer 4] Deleted: group-3 - Message 1
+[Consumer 5] Deleted: group-2 - Message 1
+[Consumer 4] Processing: group-1 - Message 1
+[Consumer 5] Processing: group-3 - Message 2
+[Consumer 1] Processing: group-2 - Message 2
+[Consumer 4] Deleted: group-1 - Message 1
+[Consumer 5] Deleted: group-3 - Message 2
+[Consumer 1] Deleted: group-2 - Message 2
+[Consumer 5] Processing: group-1 - Message 3
+[Consumer 4] Processing: group-3 - Message 3
+[Consumer 1] Processing: group-2 - Message 3
+[Consumer 4] Deleted: group-3 - Message 3
+[Consumer 1] Deleted: group-2 - Message 3
+[Consumer 5] Deleted: group-1 - Message 3
+[Consumer 4] Processing: group-3 - Message 4
+[Consumer 1] Processing: group-2 - Message 5
+[Consumer 5] Processing: group-1 - Message 5
+[Consumer 1] Deleted: group-2 - Message 5
+[Consumer 4] Deleted: group-3 - Message 4
+[Consumer 5] Deleted: group-1 - Message 5
+[Consumer 4] Processing: group-1 - Message 4
+[Consumer 1] Processing: group-2 - Message 4
+[Consumer 5] Processing: group-3 - Message 5
+[Consumer 1] Deleted: group-2 - Message 4
+[Consumer 5] Deleted: group-3 - Message 5
+[Consumer 4] Deleted: group-1 - Message 4
+[Consumer 5] Processing: group-3 - Message 6
+[Consumer 4] Processing: group-1 - Message 6
+[Consumer 1] Processing: group-2 - Message 6
+[Consumer 5] Deleted: group-3 - Message 6
+[Consumer 5] Processing: group-3 - Message 7
+[Consumer 1] Deleted: group-2 - Message 6
+[Consumer 4] Deleted: group-1 - Message 6
+[Consumer 1] Processing: group-2 - Message 7
+[Consumer 4] Processing: group-1 - Message 7
+[Consumer 5] Deleted: group-3 - Message 7
+[Consumer 4] Deleted: group-1 - Message 7
+[Consumer 1] Deleted: group-2 - Message 7
+[Consumer 4] Processing: group-3 - Message 8
+[Consumer 5] Processing: group-1 - Message 8
+[Consumer 1] Processing: group-2 - Message 8
+[Consumer 1] Deleted: group-2 - Message 8
+[Consumer 5] Deleted: group-1 - Message 8
+[Consumer 4] Deleted: group-3 - Message 8
+[Consumer 1] Processing: group-2 - Message 9
+[Consumer 5] Processing: group-3 - Message 9
+[Consumer 4] Processing: group-1 - Message 9
+[Consumer 1] Deleted: group-2 - Message 9
+[Consumer 5] Deleted: group-3 - Message 9
+[Consumer 1] Processing: group-2 - Message 10
+[Consumer 4] Deleted: group-1 - Message 9
+[Consumer 5] Processing: group-3 - Message 10
+[Consumer 4] Processing: group-1 - Message 10
+[Consumer 5] Deleted: group-3 - Message 10
+[Consumer 4] Deleted: group-1 - Message 10
+[Consumer 1] Deleted: group-2 - Message 10
+[Consumer 1] Finished processing all messages in 22.178061166s
+[Consumer 4] Finished processing all messages in 22.179788667s
+[Consumer 5] Finished processing all messages in 22.180268708s
+```
+
+This test was configured with only 5 non-group specific consumers and 3 message group ids. As in the group specific one with multiple consumers per group, there are a couple of consumers that starved and stopped working because there were no messages for them to process. With only 3 message group ids, only 3 message group ids, only 3 messages could be processed at a time.
+
+## Test Scenarios: Actual AWS instance
+
+### Scenario 5: Group specific consumers. One Consumer Per Group
 
 In this scenario, we instantiate one consumer for groups each group and are connecting directly to an actual AWS instance.
 
@@ -746,5 +955,604 @@ Connecting to AWS using profile
 [Consumer 1][group-1] Finished processing all messages in 13.719142125s
 ```
 
-**Note**: In this last test, an actual AWS instance, using actual SNS and SQS services. For security reasons, all the arn values have been replaced to be similar as Localstack. The actual values are not shown in the logs.
+This specific scenario seems like something is happening around the acknowledgment. You can see processing time is shorter that previous test. This is due to the ignoring of messages not getting re-processed.
 
+### Scenario 6: Non-group specific. More consumers than groups
+
+```text
+Starting FIFO Producer and Consumers...
+Connecting to AWS using profile
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-1 Body: group-1 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-2 Body: group-2 - Message 10
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 1
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 2
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 3
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 4
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 5
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 6
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 7
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 8
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 9
+[Producer] Sending message to SNS topic: arn:aws:sns:us-east-1:000000000000:demo-topic.fifo GroupId: group-3 Body: group-3 - Message 10
+[Consumer] Starting general consumer 3 (total consumers: 3)
+[Consumer] Starting general consumer 1 (total consumers: 3)
+[Consumer] Starting general consumer 2 (total consumers: 3)
+2025/03/25 16:11:32 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "5114f39b-cb69-52c4-b704-93c6e738cdc8",
+  "SequenceNumber" : "10000000000000036000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:29.193Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:32 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "284956e5-6ed2-55a3-8dc2-36b84281faaf",
+  "SequenceNumber" : "10000000000000056000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:31.000Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:32 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "925aa59c-72cf-5951-a607-c5c15e9dd65d",
+  "SequenceNumber" : "10000000000000046000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:30.171Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "5114f39b-cb69-52c4-b704-93c6e738cdc8",
+  "SequenceNumber" : "10000000000000036000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:29.193Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "925aa59c-72cf-5951-a607-c5c15e9dd65d",
+  "SequenceNumber" : "10000000000000046000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:30.171Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "284956e5-6ed2-55a3-8dc2-36b84281faaf",
+  "SequenceNumber" : "10000000000000056000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 1",
+  "Timestamp" : "2025-03-25T22:11:31.000Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "4f40f5e4-0dab-54e3-a7f1-95b921fabbef",
+  "SequenceNumber" : "10000000000000037000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:29.413Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "acdbc0cd-8186-5499-8d71-a090add42b95",
+  "SequenceNumber" : "10000000000000047000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:30.253Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:34 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "34a0a6a8-6678-56c7-a0ac-c6f54a2b39cb",
+  "SequenceNumber" : "10000000000000057000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:31.084Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "4f40f5e4-0dab-54e3-a7f1-95b921fabbef",
+  "SequenceNumber" : "10000000000000037000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:29.413Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "acdbc0cd-8186-5499-8d71-a090add42b95",
+  "SequenceNumber" : "10000000000000047000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:30.253Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "34a0a6a8-6678-56c7-a0ac-c6f54a2b39cb",
+  "SequenceNumber" : "10000000000000057000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 2",
+  "Timestamp" : "2025-03-25T22:11:31.084Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "892f54b2-e593-5205-8a51-34efc9c2ad09",
+  "SequenceNumber" : "10000000000000038000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:29.497Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "b0721554-614f-59b3-af9b-75094d1d86bf",
+  "SequenceNumber" : "10000000000000048000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:30.335Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:36 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "070b59ec-4e65-5144-85e4-39b16236de48",
+  "SequenceNumber" : "10000000000000058000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:31.166Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "b0721554-614f-59b3-af9b-75094d1d86bf",
+  "SequenceNumber" : "10000000000000048000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:30.335Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "892f54b2-e593-5205-8a51-34efc9c2ad09",
+  "SequenceNumber" : "10000000000000038000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:29.497Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "070b59ec-4e65-5144-85e4-39b16236de48",
+  "SequenceNumber" : "10000000000000058000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 3",
+  "Timestamp" : "2025-03-25T22:11:31.166Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "2b2ec0c7-84bc-5b5d-a169-a09aa8eda451",
+  "SequenceNumber" : "10000000000000039000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:29.580Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "f5c7817b-cfe4-5b27-8919-e126e3b6b42b",
+  "SequenceNumber" : "10000000000000049000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:30.418Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:38 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "d5b77e47-57b0-55f8-bccc-1e1a7be30af4",
+  "SequenceNumber" : "10000000000000059000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:31.250Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "f5c7817b-cfe4-5b27-8919-e126e3b6b42b",
+  "SequenceNumber" : "10000000000000049000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:30.418Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "2b2ec0c7-84bc-5b5d-a169-a09aa8eda451",
+  "SequenceNumber" : "10000000000000039000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:29.580Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "d5b77e47-57b0-55f8-bccc-1e1a7be30af4",
+  "SequenceNumber" : "10000000000000059000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 4",
+  "Timestamp" : "2025-03-25T22:11:31.250Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "409086d4-6af5-52da-84ae-e68946a7bdd6",
+  "SequenceNumber" : "10000000000000050000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:30.500Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "9be82129-c3e0-5a4f-a37c-4174efb1c543",
+  "SequenceNumber" : "10000000000000040000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:29.667Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:40 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "77d2b85d-3fca-5dbf-8e46-d800139912b3",
+  "SequenceNumber" : "10000000000000060000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:31.335Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "9be82129-c3e0-5a4f-a37c-4174efb1c543",
+  "SequenceNumber" : "10000000000000040000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:29.667Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "409086d4-6af5-52da-84ae-e68946a7bdd6",
+  "SequenceNumber" : "10000000000000050000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:30.500Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "77d2b85d-3fca-5dbf-8e46-d800139912b3",
+  "SequenceNumber" : "10000000000000060000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 5",
+  "Timestamp" : "2025-03-25T22:11:31.335Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "69c250af-5467-5ce2-ba1c-30f27836e3ee",
+  "SequenceNumber" : "10000000000000041000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:29.751Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "0a4f075c-80b2-5fdd-91f7-6701ace0f0d1",
+  "SequenceNumber" : "10000000000000051000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:30.584Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:42 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "1cd29733-f767-5979-a8b0-f76edb34c675",
+  "SequenceNumber" : "10000000000000061000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:31.419Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "0a4f075c-80b2-5fdd-91f7-6701ace0f0d1",
+  "SequenceNumber" : "10000000000000051000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:30.584Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "1cd29733-f767-5979-a8b0-f76edb34c675",
+  "SequenceNumber" : "10000000000000061000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:31.419Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "69c250af-5467-5ce2-ba1c-30f27836e3ee",
+  "SequenceNumber" : "10000000000000041000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 6",
+  "Timestamp" : "2025-03-25T22:11:29.751Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "4c8db0d7-a492-5d50-85d6-d08a88c3725c",
+  "SequenceNumber" : "10000000000000042000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:29.834Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "fb56a44d-0825-5b72-9711-c4102476f47e",
+  "SequenceNumber" : "10000000000000062000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:31.502Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:44 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "a5a9491b-9c56-57f7-8386-2946b004b8fb",
+  "SequenceNumber" : "10000000000000052000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:30.666Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "4c8db0d7-a492-5d50-85d6-d08a88c3725c",
+  "SequenceNumber" : "10000000000000042000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:29.834Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "fb56a44d-0825-5b72-9711-c4102476f47e",
+  "SequenceNumber" : "10000000000000062000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:31.502Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "a5a9491b-9c56-57f7-8386-2946b004b8fb",
+  "SequenceNumber" : "10000000000000052000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 7",
+  "Timestamp" : "2025-03-25T22:11:30.666Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "5e909a67-823b-5f25-a470-fa3aae6a0029",
+  "SequenceNumber" : "10000000000000043000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:29.918Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "e45dc756-31c8-51c2-baa1-a70b1d9a5ece",
+  "SequenceNumber" : "10000000000000053000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:30.751Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:47 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "deaf373e-0fbf-556f-9fab-576323ec7a63",
+  "SequenceNumber" : "10000000000000063000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:31.587Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "e45dc756-31c8-51c2-baa1-a70b1d9a5ece",
+  "SequenceNumber" : "10000000000000053000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:30.751Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "5e909a67-823b-5f25-a470-fa3aae6a0029",
+  "SequenceNumber" : "10000000000000043000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:29.918Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "deaf373e-0fbf-556f-9fab-576323ec7a63",
+  "SequenceNumber" : "10000000000000063000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 8",
+  "Timestamp" : "2025-03-25T22:11:31.587Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "ce3bce87-a25c-56a7-af2d-aeda8e0ea9ab",
+  "SequenceNumber" : "10000000000000044000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:30.002Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "0818b1d5-cd10-50a7-a9b4-d188e142dfab",
+  "SequenceNumber" : "10000000000000054000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:30.834Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:49 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "29aeb6be-317e-545e-9b76-d6e31d2dfb52",
+  "SequenceNumber" : "10000000000000064000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:31.670Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "ce3bce87-a25c-56a7-af2d-aeda8e0ea9ab",
+  "SequenceNumber" : "10000000000000044000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:30.002Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "0818b1d5-cd10-50a7-a9b4-d188e142dfab",
+  "SequenceNumber" : "10000000000000054000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:30.834Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "29aeb6be-317e-545e-9b76-d6e31d2dfb52",
+  "SequenceNumber" : "10000000000000064000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 9",
+  "Timestamp" : "2025-03-25T22:11:31.670Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 2] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "a8c053b0-dbe4-59a2-9696-33edf7b6e6ae",
+  "SequenceNumber" : "10000000000000045000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:30.086Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 3] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "34a77968-1c64-5151-83c2-193530360e5d",
+  "SequenceNumber" : "10000000000000055000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:30.917Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:51 [Consumer 1] Processing: {
+  "Type" : "Notification",
+  "MessageId" : "c62704d7-a0da-5e9b-9693-648a8c891197",
+  "SequenceNumber" : "10000000000000065000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:31.752Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:53 [Consumer 2] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "a8c053b0-dbe4-59a2-9696-33edf7b6e6ae",
+  "SequenceNumber" : "10000000000000045000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-1 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:30.086Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:53 [Consumer 3] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "34a77968-1c64-5151-83c2-193530360e5d",
+  "SequenceNumber" : "10000000000000055000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-2 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:30.917Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:53 [Consumer 1] Deleted: {
+  "Type" : "Notification",
+  "MessageId" : "c62704d7-a0da-5e9b-9693-648a8c891197",
+  "SequenceNumber" : "10000000000000065000",
+  "TopicArn" : "arn:aws:sns:us-east-1:000000000000:demo-topic.fifo",
+  "Message" : "group-3 - Message 10",
+  "Timestamp" : "2025-03-25T22:11:31.752Z",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:000000000000:demo-topic.fifo:e7677be2-cd0c-4768-b831-3fd213ba0680"
+}
+2025/03/25 16:11:55 [Consumer 3] Finished processing all messages in 23.934774209s
+2025/03/25 16:11:55 [Consumer 2] Finished processing all messages in 23.934939292s
+2025/03/25 16:11:55 [Consumer 1] Finished processing all messages in 23.97438075s
+```
+
+**Note**: In this last tests, an actual AWS instance, using actual SNS and SQS services. For security reasons, all the arn values have been replaced to be similar as Localstack. The actual values are not shown in the logs.
+
+## Conclusions
+
+- SQS FIFO queues guarantee strict ordering within a MessageGroupId.
+- Only one message per group can be processed at a time, even with multiple consumers.
+- Extra consumers for the same group do not improve throughput. Meaning that max possible consumers are the same as max unique MessageGroupId's.
+- Doesn't support sticky partitions natively. There are alternatives like a dispatcher pattern.
+- Parallel processing is only achieved when multiple distinct MessageGroupIds are used.
+- Consumers may receive messages for the wrong group and must implement filtering logic in case that we need specific logic per consumer, like storing a state or cache per consumer.
+
+### Notes
+
+- While there's no limit on the number of group IDs, Amazon SQS FIFO queues have throughput limits (e.g., 3000 messages per second with batching, or 300 without batching). Even though we could parallelize work using a higher amount of MessageGroupId's we should take the throughput limit into consideration.
+- In this tests, messages used a naming convention to identify their group. In production, group info should be extracted from message metadata or payload, depending on how it's published.
+- An actual AWS instance was used to hit SNS and SQS services. For security reasons, all the arn values have been replaced to be similar as Localstack. The actual values are not shown in the logs.
