@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	// Configuration settings
+	// Modes
 	UseLocalstack bool
 	GroupSpecific bool
 
-	NumGroups        int
-	MessagesPerGroup int
+	// Configuration settings
+	NumGroups     int
+	TotalMessages int
 
 	// Consumer configurations
 	Group1NumConsumers  int // consumers for group-1 in group-specific mode
@@ -32,18 +33,17 @@ var (
 	Profile  string
 )
 
-// Initialize configuration with default values and environment overrides
 func init() {
-	if err := godotenv.Load("../../.env"); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 
-	// Set defaults then override with environment variables if available
+	// set defaults then override with environment variables if available
 	UseLocalstack = getEnvBool("USE_LOCALSTACK", true)
 	GroupSpecific = getEnvBool("GROUP_SPECIFIC", false)
 
 	NumGroups = getEnvInt("NUM_GROUPS", 6)
-	MessagesPerGroup = getEnvInt("MESSAGES_PER_GROUP", 10)
+	TotalMessages = getEnvInt("TOTAL_MESSAGES", 60)
 
 	Group1NumConsumers = getEnvInt("GROUP1_NUM_CONSUMERS", 1)
 	GeneralNumConsumers = getEnvInt("GENERAL_NUM_CONSUMERS", 3)
@@ -112,7 +112,7 @@ func LoadAWSConfig(ctx context.Context) (aws.Config, error) {
 	return cfg, err
 }
 
-// GenerateGroups creates a slice of group IDs
+// GenerateGroups creates a slice of group ids
 func GenerateGroups() []string {
 	groups := make([]string, NumGroups)
 	for i := 0; i < NumGroups; i++ {

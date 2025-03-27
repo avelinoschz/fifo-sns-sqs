@@ -19,12 +19,16 @@ import (
 
 func main() {
 	fmt.Println("Starting FIFO Consumers...")
+	startTime := time.Now() // Record start time
 
-	// Create context that can be canceled
+	// camcelable context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Set up signal handling for graceful shutdown
+	// message stats tracker
+	stats := NewMessageStats()
+
+	// graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -41,8 +45,13 @@ func main() {
 	sqsClient := sqs.NewFromConfig(cfg)
 
 	var wg sync.WaitGroup
+	totalConsumers := 0
 
 	if config.GroupSpecific {
+		// number of consumers for group-specific mode: group-1 config + (num_groups - 1)
+		totalConsumers = config.Group1NumConsumers + (config.NumGroups - 1)
+		fmt.Printf("[Consumer] Starting %d group-specific consumers...\n", totalConsumers)
+
 		// start a specific consumer for each group
 		for groupNum := 1; groupNum <= config.NumGroups; groupNum++ {
 			groupID := fmt.Sprintf("group-%d", groupNum)
@@ -53,7 +62,7 @@ func main() {
 					wg.Add(1)
 					go func(id int, gID string) {
 						fmt.Printf("[Consumer] Starting consumer %d for %s\n", id, gID)
-						consumeOnlyGroup(ctx, sqsClient, id, gID, &wg)
+						consumeOnlyGroup(ctx, sqsClient, id, gID, &wg, stats)
 					}(i, groupID)
 				}
 				continue
@@ -63,134 +72,142 @@ func main() {
 			wg.Add(1)
 			go func(id int, gID string) {
 				fmt.Printf("[Consumer] Starting consumer %d for %s\n", id, gID)
-				consumeOnlyGroup(ctx, sqsClient, id, gID, &wg)
+				consumeOnlyGroup(ctx, sqsClient, id, gID, &wg, stats)
 			}(groupNum, groupID)
 		}
 	} else {
-		// start the non group specific consumers
+		totalConsumers = config.GeneralNumConsumers
+		fmt.Printf("[Consumer] Starting %d general consumers...\n", totalConsumers)
+
+		// start the general consumers
 		for i := 1; i <= config.GeneralNumConsumers; i++ {
 			wg.Add(1)
 			go func(id int) {
-				fmt.Printf("[Consumer] Starting general consumer %d (total consumers: %d)\n",
-					id, config.GeneralNumConsumers)
-				consumeAllMessages(ctx, sqsClient, id, &wg)
+				fmt.Printf("[Consumer] Starting general consumer %d\n", id)
+				consumeAllMessages(ctx, sqsClient, id, &wg, stats)
 			}(i)
 		}
 	}
 
-	// Wait for all consumers to finish or context to be canceled
 	wg.Wait()
+
+	stats.PrintStats()
+
+	uptime := time.Since(startTime).Round(time.Second)
+	fmt.Printf("Service was up for: %s\n", uptime)
+
 	fmt.Println("All consumers have shut down. Exiting.")
 }
 
-func consumeAllMessages(ctx context.Context, client *sqs.Client, consumerID int, wg *sync.WaitGroup) {
+func consumeAllMessages(ctx context.Context, client *sqs.Client, consumerID int, wg *sync.WaitGroup, stats *MessageStats) {
 	defer wg.Done()
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[Consumer %d] Shutting down due to context cancellation", consumerID)
-			return
-		default:
-			resp, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-				QueueUrl:            aws.String(config.QueueURL),
-				MaxNumberOfMessages: 1,
-				WaitTimeSeconds:     10, // Long polling
-			})
-			if err != nil {
-				if ctx.Err() != nil {
-					return // Context was canceled
-				}
-				log.Printf("[Consumer %d] Error receiving: %v", consumerID, err)
-				time.Sleep(1 * time.Second) // Back off a bit before retrying
-				continue
-			}
-
-			if len(resp.Messages) == 0 {
-				continue // Keep polling for new messages
-			}
-
-			msg := resp.Messages[0]
-			log.Printf("[Consumer %d] Processing: %s", consumerID, *msg.Body)
-
-			// processing the message
-			time.Sleep(2 * time.Second)
-
-			_, err = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-				QueueUrl:      aws.String(config.QueueURL),
-				ReceiptHandle: msg.ReceiptHandle,
-			})
-			if err != nil {
-				log.Printf("[Consumer %d] Error deleting message: %v", consumerID, err)
-			} else {
-				log.Printf("[Consumer %d] Deleted: %s", consumerID, *msg.Body)
-			}
-		}
-	}
+	consumeMessages(ctx, client, consumerID, "", stats, func(msg types.Message, groupID string) bool {
+		// process all messages normally
+		return true
+	})
 }
 
-func consumeOnlyGroup(ctx context.Context, client *sqs.Client, consumerID int, expectedGroup string, wg *sync.WaitGroup) {
+func consumeOnlyGroup(ctx context.Context, client *sqs.Client, consumerID int, expectedGroup string, wg *sync.WaitGroup, stats *MessageStats) {
 	defer wg.Done()
+
+	consumeMessages(ctx, client, consumerID, expectedGroup, stats, func(msg types.Message, groupID string) bool {
+		// only process messages from the expected group
+		if !isGroupMessage(msg, expectedGroup) {
+			log.Printf("[Consumer %d][%s] Ignoring message from another group: %s", consumerID, expectedGroup, *msg.Body)
+			return false
+		}
+		return true
+	})
+}
+
+func consumeMessages(
+	ctx context.Context,
+	client *sqs.Client,
+	consumerID int,
+	groupLabel string, // empty for general consumers, group name for specific consumers
+	stats *MessageStats,
+	shouldProcess func(types.Message, string) bool, // Function to determine if we should process a message
+) {
+	logPrefix := fmt.Sprintf("[Consumer %d]", consumerID)
+	if groupLabel != "" {
+		logPrefix = fmt.Sprintf("[Consumer %d][%s]", consumerID, groupLabel)
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[Consumer %d][%s] Shutting down due to context cancellation", consumerID, expectedGroup)
+			log.Printf("%s Shutting down due to context cancellation", logPrefix)
 			return
 		default:
 			resp, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 				QueueUrl:            aws.String(config.QueueURL),
 				MaxNumberOfMessages: 1,
-				WaitTimeSeconds:     10, // Long polling
+				WaitTimeSeconds:     10, // long polling
 			})
 			if err != nil {
 				if ctx.Err() != nil {
 					return // Context was canceled
 				}
-				log.Printf("[Consumer %d][%s] Error receiving: %v", consumerID, expectedGroup, err)
-				time.Sleep(1 * time.Second) // Back off a bit before retrying
+				log.Printf("%s Error receiving: %v", logPrefix, err)
+				time.Sleep(1 * time.Second) // back off a bit before retrying
 				continue
 			}
 
 			if len(resp.Messages) == 0 {
-				continue // Keep polling for new messages
+				continue // keep polling for new messages
 			}
 
 			msg := resp.Messages[0]
 
-			// manual filtering, only processing if the message belongs to the expected group
-			if !isGroupMessage(msg, expectedGroup) {
-				log.Printf("[Consumer %d][%s] Ignoring message from another group: %s", consumerID, expectedGroup, *msg.Body)
+			// extract group ID from the message body for stats
+			groupID := extractGroupID(*msg.Body)
+
+			// depending on the mode (group-specific or general), decide if we should process the message
+			if !shouldProcess(msg, groupID) {
+				// Return the message to the queue
 				_, err = client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
 					QueueUrl:          aws.String(config.QueueURL),
 					ReceiptHandle:     msg.ReceiptHandle,
 					VisibilityTimeout: int32(0), // makes it visible again immediately
 				})
 				if err != nil {
-					log.Printf("[Consumer %d][%s] Error changing visibility: %v", consumerID, expectedGroup, err)
+					log.Printf("%s Error changing visibility: %v", logPrefix, err)
 				}
 				continue
 			}
 
-			log.Printf("[Consumer %d][%s] Processing: %s", consumerID, expectedGroup, *msg.Body)
+			log.Printf("%s Processing: %s", logPrefix, *msg.Body)
 
 			// processing the message
-			time.Sleep(2 * time.Second)
+			time.Sleep(200 * time.Millisecond)
 
 			_, err = client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 				QueueUrl:      aws.String(config.QueueURL),
 				ReceiptHandle: msg.ReceiptHandle,
 			})
 			if err != nil {
-				log.Printf("[Consumer %d][%s] Error deleting message: %v", consumerID, expectedGroup, err)
+				log.Printf("%s Error deleting message: %v", logPrefix, err)
 			} else {
-				log.Printf("[Consumer %d][%s] Deleted: %s", consumerID, expectedGroup, *msg.Body)
+				stats.IncrementCount(consumerID, groupID)
+				log.Printf("%s Deleted: %s", logPrefix, *msg.Body)
 			}
 		}
 	}
 }
 
-// simple check based on group name in message body (group ID is not returned by ReceiveMessage)
+// extractGroupID extracts the group id from the message body based on format
+func extractGroupID(body string) string {
+	for i := 1; i <= config.NumGroups; i++ {
+		groupID := fmt.Sprintf("group-%d", i)
+		if strings.Contains(body, groupID) {
+			return groupID
+		}
+	}
+	return "unknown"
+}
+
+// simple check based on group name in message body (group id is not returned by ReceiveMessage)
 // supposedly, it should be on the msg metadata map, but didn't find it. Maybe due to LocalStack limitations.
 func isGroupMessage(msg types.Message, group string) bool {
 	return msg.Body != nil && len(*msg.Body) > 0 && contains(*msg.Body, group)
