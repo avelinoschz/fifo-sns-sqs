@@ -10,7 +10,6 @@ import (
 type MessageStats struct {
 	mu     sync.Mutex
 	counts map[int]map[string]int // map[consumerID]map[groupID]count
-
 }
 
 func NewMessageStats() *MessageStats {
